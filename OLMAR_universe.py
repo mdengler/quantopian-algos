@@ -9,15 +9,15 @@ def initialize(context):
     set_slippage(slippage.VolumeShareSlippage(volume_limit=0.25, price_impact=0, delay=datetime.timedelta(minutes=0)))
     set_commission(commission.PerShare(cost=0))
     set_universe(universe.DollarVolumeUniverse(floor_percentile=98.0, ceiling_percentile=100.0))
-    
-def handle_data(context, data):    
+
+def handle_data(context, data):
     context.counter += 1
     if context.counter <= 5:
         return
-    
+
     context.stocks = [sid for sid in data]
     m = len(context.stocks)
-    
+
     if not context.init:
         context.b_t = np.ones(m) / m
         rebalance_portfolio(context, data, context.b_t)
@@ -31,9 +31,9 @@ def handle_data(context, data):
         # need to grow portfolio vector
         len_bt = len(context.b_t)
         context.b_t = np.concatenate([context.b_t, np.ones(m-len_bt) / m])
-    
+
     assert len(context.b_t) == m
-    
+
     x_tilde = np.zeros(m)
 
     b = np.zeros(m)
@@ -42,11 +42,11 @@ def handle_data(context, data):
     for i, stock in enumerate(context.stocks):
         price = data[stock].price
         x_tilde[i] = data[stock].mavg(5) / price
-        
+
     ###########################
     # Inside of OLMAR (algo 2)
     x_bar = x_tilde.mean()
-        
+
     # market relative deviation
     mark_rel_dev = x_tilde - x_bar
 
@@ -70,35 +70,35 @@ def handle_data(context, data):
     b = context.b_t + step_size*mark_rel_dev
     b_norm = simplex_projection(b)
     #np.testing.assert_almost_equal(b_norm.sum(), 1)
-        
+
     rebalance_portfolio(context, data, b_norm)
-        
+
     # Predicted return with new portfolio
     pred_return = np.dot(b_norm, x_tilde)
     log.debug("Predicted return: {pred_return}".format(pred_return=pred_return))
-    
+
     # Make sure that we actually optimized our objective
     #assert exp_return-.001 <= pred_return, "{new} <= {old}".format(new=exp_return, old=pred_return)
     # update portfolio
     context.b_t = b_norm
-    
+
 def rebalance_portfolio(context, data, desired_port):
     print 'desired'
     print desired_port
     desired_amount = np.zeros_like(desired_port)
     current_amount = np.zeros_like(desired_port)
     prices = np.zeros_like(desired_port)
-        
+
     if context.init:
         positions_value = context.portfolio.starting_cash
     else:
         positions_value = context.portfolio.positions_value + context.portfolio.cash
-        
-    
+
+
     for i, stock in enumerate(context.stocks):
         current_amount[i] = context.portfolio.positions[stock].amount
         prices[i] = data[stock].price
-    
+
     desired_amount = np.round(desired_port * positions_value / prices)
     diff_amount = desired_amount - current_amount
     for i, stock in enumerate(context.stocks):
